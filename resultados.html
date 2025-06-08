@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Resultados Escrutinio</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { text-align: center; }
+    #grafico { max-width: 600px; margin: auto; }
+  </style>
+</head>
+<body>
+
+  <h2>Resultados Acumulados</h2>
+  <canvas id="grafico" width="400" height="400"></canvas>
+
+  <script>
+    let acumulado = {
+      nombres: [],
+      votos: [],
+      colores: []
+    };
+
+    const ctx = document.getElementById('grafico').getContext('2d');
+    let chart = null;
+
+    function crearGrafico() {
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: acumulado.nombres,
+          datasets: [{
+            data: acumulado.votos,
+            backgroundColor: acumulado.colores
+          }]
+        },
+        options: {
+          responsive: false,
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    // Escuchamos mensajes desde la ventana principal
+    window.addEventListener('message', (event) => {
+      const mensaje = event.data;
+      if (!mensaje || !mensaje.type) return;
+
+      if (mensaje.type === 'update') {
+        acumulado = mensaje.datos;
+        crearGrafico();
+      } else if (mensaje.type === 'reset') {
+        acumulado = { nombres: [], votos: [], colores: [] };
+        if (chart) chart.destroy();
+      }
+    });
+
+    // Intentamos cargar datos iniciales desde localStorage (por si se abrió directo)
+    window.onload = () => {
+      try {
+        const datos = localStorage.getItem('datosEscrutinio');
+        if (datos) {
+          acumulado = JSON.parse(datos);
+          crearGrafico();
+        }
+      } catch {
+        // No hace nada si no hay datos
+      }
+    }
+  </script>
+
+</body>
+</html>

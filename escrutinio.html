@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Escrutinio Elecciones Misiones - 8 de Junio</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input[type="number"] { width: 80px; margin-right: 10px; }
+    label { margin-right: 15px; }
+    #listasContainer input { margin-bottom: 5px; display: inline-block; }
+    button { margin-top: 15px; padding: 10px 15px; cursor: pointer; }
+    #resetButton { background: red; color: white; border: none; }
+    #downloadButton { background: green; color: white; border: none; margin-left: 10px; }
+  </style>
+</head>
+<body>
+
+  <h2>Carga de Actas de Escrutinio</h2>
+
+  <form id="actaForm">
+    <label>Mesa Nº: <input type="number" id="mesa" required min="1" /></label><br /><br />
+    <label>Cantidad de votantes: <input type="number" id="votantes" required min="0" /></label><br /><br />
+
+    <fieldset>
+      <legend>Votos por lista</legend>
+      <div id="listasContainer"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Otros votos</legend>
+      <div id="otrosContainer"></div>
+    </fieldset>
+
+    <br />
+    <button type="submit">Cargar Mesa</button>
+  </form>
+
+  <h3>Resumen Acumulado</h3>
+  <canvas id="grafico" width="400" height="400"></canvas>
+
+  <br />
+  <button id="verResultados">Ver resultados en otra ventana</button>
+  <button id="resetButton">Resetear Todo</button>
+  <button id="downloadButton">Descargar Resultados CSV</button>
+
+  <script>
+    // Configuración inicial: nombres y colores de listas
+    const nombresListas = [
+      "PARTIDO OBRERO",
+      "LA LIBERTAD AVANZA",
+      "AGRARIO Y SOCIAL",
+      "MOVIMIENTO POSTIVO",
+      "PARTIDO DE INTEGRACION Y MILITANCIA",
+      "POR LA VIDA Y LOS VALORES",
+      "PARTIDO DEMOCRATA",
+      "TIERRA TECHO Y TRABAJO",
+      "PARTIDO LIBERTARIO",
+      "FRENTE RENOVADOR",
+      "CONFLUENCIA POR LA PATRIA",
+      "UNIDOS POR EL FUTURO"
+    ];
+
+    // Colores según tu pedido (los que no tenían color, asigné aleatorio)
+    const coloresListas = [
+      '#ff0000',           // PARTIDO OBRERO (rojo por defecto)
+      'violet',            // LA LIBERTAD AVANZA (violeta)
+      'green',             // AGRARIO Y SOCIAL (verde)
+      'orange',            // MOVIMIENTO POSTIVO (naranja)
+      '#00aaff',           // PARTIDO DE INTEGRACION Y MILITANCIA (azul claro)
+      'blue',              // POR LA VIDA Y LOS VALORES (azul)
+      'skyblue',           // PARTIDO DEMOCRATA (celeste)
+      'pink',              // TIERRA TECHO Y TRABAJO (rosa)
+      'plum',              // PARTIDO LIBERTARIO (lila claro)
+      'red',               // FRENTE RENOVADOR (rojo)
+      '#804000',           // CONFLUENCIA POR LA PATRIA (marrón oscuro)
+      'yellow'             // UNIDOS POR EL FUTURO (amarillo)
+    ];
+
+    // Otros votos a ingresar igual que listas:
+    const nombresOtros = [
+      "Votos en blanco",
+      "Votos observados",
+      "Votos impugnados",
+      "Votos personal asignado"
+    ];
+    const coloresOtros = ['#ccc', '#888', '#555', '#222'];
+
+    const listasContainer = document.getElementById('listasContainer');
+    const otrosContainer = document.getElementById('otrosContainer');
+
+    // Creamos inputs para las listas
+    nombresListas.forEach((nombre, i) => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.id = 'lista' + i;
+      input.min = 0;
+      input.placeholder = nombre;
+      input.dataset.index = i;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          let next = document.querySelector(`#lista${parseInt(e.target.dataset.index) + 1}`);
+          if (!next) next = document.querySelector('#otros0');
+          if (next) next.focus();
+        }
+      });
+      listasContainer.appendChild(input);
+    });
+
+    // Creamos inputs para los votos "otros"
+    nombresOtros.forEach((nombre, i) => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.id = 'otros' + i;
+      input.min = 0;
+      input.placeholder = nombre;
+      input.dataset.index = i;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          let next = document.querySelector(`#otros${parseInt(e.target.dataset.index) + 1}`);
+          if (!next) document.getElementById('mesa').focus();
+          else next.focus();
+        }
+      });
+      otrosContainer.appendChild(input);
+    });
+
+    // Variables
+    let acumulado = {
+      nombres: [...nombresListas, ...nombresOtros],
+      votos: Array(nombresListas.length + nombresOtros.length).fill(0),
+      colores: [...coloresListas, ...coloresOtros]
+    };
+
+    // Gráfico y ventana de resultados
+    let chart = null;
+    let resultadosWindow = null;
+
+    // Iniciar gráfico vacío
+    function crearGrafico() {
+      const ctx = document.getElementById('grafico').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: acumulado.nombres,
+          datasets: [{
+            data: acumulado.votos,
+            backgroundColor: acumulado.colores
+          }]
+        },
+        options: {
+          responsive: false,
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    crearGrafico();
+
+    // Cargar datos guardados si existen
+    const datosGuardados = localStorage.getItem('datosEscrutinio');
+    if (datosGuardados) {
+      acumulado = JSON.parse(datosGuardados);
+      crearGrafico();
+    }
+
+    // Actualizar gráfico y localStorage + enviar mensaje a ventana resultados
+    function actualizarGraficoYLocalStorage() {
+      localStorage.setItem('datosEscrutinio', JSON.stringify(acumulado));
+      if (chart) {
+        chart.data.datasets[0].data = acumulado.votos;
+        chart.update();
+      }
+      if (resultadosWindow && !resultadosWindow.closed) {
+        resultadosWindow.postMessage({ type: 'update', datos: acumulado }, '*');
+      }
+    }
+
+    // Formulario y validaciones
+    const actaForm = document.getElementById('actaForm');
+
+    // Para evitar mesas repetidas
+    let mesasCargadas = new Set(JSON.parse(localStorage.getItem('mesasCargadas') || '[]'));
+
+    actaForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const mesa = Number(document.getElementById('mesa').value);
+      if (mesasCargadas.has(mesa)) {
+        alert('La mesa ' + mesa + ' ya fue cargada.');
+        return;
+      }
+
+      const votantes = Number(document.getElementById('votantes').value);
+
+      // Sumamos votos de listas y otros
+      let votosSumados = 0;
+      const votosLista = [];
+
+      for (let i = 0; i < acumulado.nombres.length; i++) {
+        let valor;
+        if (i < nombresListas.length) {
+          valor = Number(document.getElementById('lista' + i).value) || 0;
+        } else {
+          valor = Number(document.getElementById('otros' + (i - nombresListas.length)).value) || 0;
+        }
+        votosLista.push(valor);
+        votosSumados += valor;
+      }
+
+      if (votosSumados > votantes) {
+        alert('La suma de votos (' + votosSumados + ') supera la cantidad de votantes (' + votantes + ').');
+        return;
+      }
+
+      // Guardamos
+      acumulado.votos = acumulado.votos.map((v, i) => v + votosLista[i]);
+      mesasCargadas.add(mesa);
+      localStorage.setItem('mesasCargadas', JSON.stringify([...mesasCargadas]));
+
+      actualizarGraficoYLocalStorage();
+
+      // Limpiar form
+      actaForm.reset();
+      document.getElementById('mesa').focus();
+    });
+
+    // Botones
+    document.getElementById('verResultados').addEventListener('click', () => {
+      if (!resultadosWindow || resultadosWindow.closed) {
+        resultadosWindow = window.open('resultados.html', 'Resultados');
+      } else {
+        resultadosWindow.focus();
+      }
+    });
+
+    document.getElementById('resetButton').addEventListener('click', () => {
+      if (confirm('¿Querés resetear todos los datos?')) {
+        localStorage.removeItem('datosEscrutinio');
+        localStorage.removeItem('mesasCargadas');
+        mesasCargadas.clear();
+        acumulado.votos.fill(0);
+        actualizarGraficoYLocalStorage();
+        if (resultadosWindow && !resultadosWindow.closed) {
+          resultadosWindow.postMessage({ type: 'reset' }, '*');
+        }
+      }
+    });
+
+    document.getElementById('downloadButton').addEventListener('click', () => {
+      const datos = localStorage.getItem('datosEscrutinio');
+      if (!datos) {
+        alert('No hay datos para descargar');
+        return;
+      }
+      const data = JSON.parse(datos);
+      let csv = 'Lista,Votos\n';
+      for (let i = 0; i < data.nombres.length; i++) {
+        csv += `"${data.nombres[i]}",${data.votos[i]}\n`;
+      }
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'resultados_escrutinio.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+  </script>
+
+</body>
+</html>
